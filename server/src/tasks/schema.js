@@ -73,6 +73,8 @@ const taskResolvers = {
 
       if (conflictHandler.hasConflict(task, clientData)) {
         const { response } = conflictHandler.resolveOnClient(task, clientData)
+        // TODO SDK should also return type
+        response.type = info.returnType;
         return response
       }
       conflictHandler.nextState(clientData)
