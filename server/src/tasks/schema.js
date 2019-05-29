@@ -57,30 +57,35 @@ const taskResolvers = {
         version: 1,
         status: 'OPEN'
       }).returning('*').then((rows) => rows[0])
+      const version = await context.db('taskVersions').insert(result).returning('*').then((rows) => rows[0])
       console.log("TASK CREATED", result)
+      console.log("VERSION LOGGED", version)
       // TODO context helper for publishing subscriptions in SDK?
       // TODO move from passing pushClient in context and use boolean to push or not here
       publish(TASK_ADDED, result, context.pushClient)
       return result
     },
     updateTask: async (obj, clientData, context, info) => {
-      console.log("Update", clientData)
       const task = await context.db('tasks').select()
         .where('id', clientData.id).then((rows) => rows[0])
+      const base = await context.db('taskVersions').select().where({'id': clientData.id, version: clientData.version}).then((rows) => rows[0])
+      console.log("BASE VERSION: ", base);
+      console.log("LATEST SERVER VERSION: ", task);
+      console.log("CLIENT VERSION", clientData);
       if (!task) {
         throw new Error(`Invalid ID for task object: ${clientData.id}`);
       }
-
-      if (conflictHandler.hasConflict(task, clientData)) {
+      if (conflictHandler.hasConflict(base, task, clientData)) {
         const { response } = conflictHandler.resolveOnClient(task, clientData)
         return response
       }
-      conflictHandler.nextState(clientData)
+      const merged = conflictHandler.merge(base, task, clientData)
 
-      const update = await context.db('tasks').update(clientData)
+      const update = await context.db('tasks').update(merged)
         .where({
           'id': clientData.id
         }).returning('*').then((rows) => rows[0])
+      const version = await context.db('taskVersions').insert(update).returning('*').then((rows) => rows[0])
 
       publish(TASK_UPDATED, update)
       return update;
@@ -88,10 +93,11 @@ const taskResolvers = {
     deleteTask: async (obj, args, context, info) => {
       console.log("Delete", args)
       const result = await context.db('tasks').delete()
-        .where('id', args.id).returning('*').then((rows) => {
+        .where('id', args.id).returning('*').then( async (rows) => {
           if (rows[0]) {
             const deletedId = rows[0].id
             publish(TASK_DELETED, rows[0])
+            await context.db('taskVersions').delete().where({'id': deletedId})
             return deletedId;
           } else {
             throw new Error(`Cannot delete object ${args.id}`);

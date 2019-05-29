@@ -1,5 +1,5 @@
 const knex = require('knex')
-const createTasksTables = require("./tasks/ddl")
+const { createTasksTables, createTaskVersionTable } = require("./tasks/ddl")
 const createFileTables = require("./files/ddl")
 
 async function connect(options) {
@@ -9,6 +9,7 @@ async function connect(options) {
   })
 
   await createTasksTables(db);
+  await createTaskVersionTable(db);
   await createFileTables(db);
   return db
 }
